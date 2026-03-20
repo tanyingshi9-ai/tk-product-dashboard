@@ -1,0 +1,1343 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<!-- v13 -->
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>TK 爆品生命周期看板</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#f4f3ef;--surf:#fff;--surf2:#f0efe9;--surf3:#e8e7e0;
+  --bd:rgba(0,0,0,.08);--bd2:rgba(0,0,0,.14);
+  --tx:#1a1918;--tx2:#6b6960;--tx3:#9c9b93;
+  --g:#1a7a4a;--gbg:#e8f5ee;--gm:#3faa6e;
+  --a:#8a5500;--abg:#fdf0d5;--am:#e09820;
+  --r:#a82020;--rbg:#fdeaea;--rm:#d45050;
+  --b:#1a508a;--bbg:#e6f0f8;--bm:#4a88c4;
+  --rad:8px;--radl:12px;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#161614;--surf:#1e1e1b;--surf2:#252521;--surf3:#2d2d29;
+  --bd:rgba(255,255,255,.08);--bd2:rgba(255,255,255,.14);
+  --tx:#e5e3da;--tx2:#9c9a92;--tx3:#6b6960;
+  --g:#3faa6e;--gbg:rgba(63,170,110,.13);--gm:#3faa6e;
+  --a:#e09820;--abg:rgba(224,152,32,.13);--am:#e09820;
+  --r:#d45050;--rbg:rgba(212,80,80,.13);--rm:#d45050;
+  --b:#4a88c4;--bbg:rgba(74,136,196,.13);--bm:#4a88c4;
+}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px;color:var(--tx);background:var(--bg);min-height:100vh}
+.app{padding:16px;max-width:100%;margin:0 auto}
+
+/* ── TOPBAR ── */
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px}
+.topbar h1{font-size:16px;font-weight:600;letter-spacing:-.3px}
+.topbar h1 em{color:var(--tx3);font-style:normal;font-weight:400}
+.ctrls{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.btn{border:0.5px solid var(--bd2);border-radius:var(--rad);padding:5px 12px;cursor:pointer;font-size:11px;font-weight:500;color:var(--tx);background:var(--surf);white-space:nowrap}
+.btn:hover{background:var(--surf2)}
+.btn.pri{background:var(--tx);color:var(--surf);border-color:var(--tx)}
+.btn.pri:hover{opacity:.85}
+
+/* ── NAV BAR ── */
+.navbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:8px 12px;background:var(--surf);border:0.5px solid var(--bd);border-radius:var(--radl);flex-wrap:wrap}
+.wknav{display:flex;align-items:center;gap:4px}
+.wknav button{background:var(--surf2);border:0.5px solid var(--bd2);border-radius:var(--rad);padding:3px 10px;cursor:pointer;font-size:11px;color:var(--tx2)}
+.wknav button:hover{background:var(--surf3)}
+.wknav .lbl{font-size:12px;font-weight:600;min-width:88px;text-align:center}
+.view-seg{display:flex;background:var(--surf2);border-radius:var(--rad);padding:2px;gap:2px}
+.view-seg button{background:none;border:none;border-radius:6px;padding:3px 12px;font-size:11px;font-weight:500;cursor:pointer;color:var(--tx2)}
+.view-seg button.on{background:var(--surf);color:var(--tx);box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.cmp-toggle{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--tx2);margin-left:auto;cursor:pointer;user-select:none}
+.cmp-toggle input{accent-color:var(--tx)}
+.period-sub{font-size:11px;color:var(--tx3)}
+
+/* ── SUMMARY TABLE ── */
+.sw{margin-bottom:14px;border:0.5px solid var(--bd);border-radius:var(--radl);overflow:hidden;background:var(--surf)}
+.st{width:100%;border-collapse:collapse}
+.st th,.st td{border:0.5px solid var(--bd);padding:5px 10px;font-size:11px;text-align:center}
+.st td:first-child{text-align:left;color:var(--tx2);background:var(--surf2);white-space:nowrap}
+.st th:first-child{background:var(--surf2)}
+.th-t{background:#eae9e2;color:#3a3a38;font-weight:600}
+.th-n{background:#d6e8ff;color:#1a3a8a;font-weight:600}
+.th-b{background:#fdeacc;color:#7a3e00;font-weight:600}
+.th-s{background:#d6f0e2;color:#1a4a2a;font-weight:600}
+.th-d{background:#fddce8;color:#7a0a3a;font-weight:600}
+.sok{color:var(--g);font-weight:600}.sng{color:var(--r);font-weight:600}
+
+/* ═══════════════════════════════════════
+   HORIZONTAL STAGE BLOCKS
+   Each stage = one block, stacked vertically.
+   Inside each block: products are COLUMNS.
+   Fields are ROWS on the left label column.
+═══════════════════════════════════════ */
+.stages{display:flex;flex-direction:column;gap:10px}
+
+.stage-block{border:0.5px solid var(--bd);border-radius:var(--radl);overflow:hidden;background:var(--surf)}
+
+/* Stage header — clickable toggle */
+.stage-hdr{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;user-select:none;transition:background .15s}
+.stage-hdr:hover{filter:brightness(.97)}
+.sh-title{font-size:13px;font-weight:600}
+.sh-count{font-size:10px;border-radius:20px;padding:2px 8px;font-weight:600}
+.sh-summary{font-size:11px;color:var(--tx2);margin-left:4px;display:flex;gap:14px}
+.sh-summary b{color:var(--tx);font-weight:600}
+.sh-arrow{margin-left:auto;font-size:11px;color:var(--tx3);transition:transform .2s;flex-shrink:0}
+.stage-hdr.open .sh-arrow{transform:rotate(180deg)}
+
+/* stage theme colors */
+.sh-t{background:#eae9e2}.sh-t .sh-title{color:#333}.sh-t .sh-count{background:rgba(0,0,0,.1);color:#333}
+.sh-n{background:#d6e8ff}.sh-n .sh-title{color:#1a3a8a}.sh-n .sh-count{background:rgba(26,58,138,.15);color:#1a3a8a}
+.sh-b{background:#fdeacc}.sh-b .sh-title{color:#7a3e00}.sh-b .sh-count{background:rgba(122,62,0,.15);color:#7a3e00}
+.sh-s{background:#d6f0e2}.sh-s .sh-title{color:#1a4a2a}.sh-s .sh-count{background:rgba(26,74,42,.15);color:#1a4a2a}
+.sh-d{background:#fddce8}.sh-d .sh-title{color:#7a0a3a}.sh-d .sh-count{background:rgba(122,10,58,.15);color:#7a0a3a}
+
+/* stage body: collapses */
+.stage-body{overflow:hidden;transition:max-height .28s ease}
+.stage-body.closed{max-height:0!important}
+
+/* ── HORIZONTAL PRODUCT TABLE ── */
+/* The core layout: a table where
+   - Col 0 = field label (sticky left)
+   - Col 1..N = one product each
+   This allows horizontal scrolling when many products */
+.product-table-wrap{overflow-x:auto;border-top:0.5px solid var(--bd)}
+.product-table{border-collapse:collapse;min-width:100%;table-layout:fixed}
+
+/* Field label column (sticky) */
+.product-table .col-label{
+  width:130px;min-width:130px;max-width:130px;
+  position:sticky;left:0;z-index:2;
+  background:var(--surf2);
+}
+/* Product columns — fixed width so they're uniform */
+.product-table .col-prod{
+  width:180px;min-width:160px;
+}
+
+/* Product header row */
+.prod-hdr-cell{
+  padding:8px 10px;background:var(--surf2);border-bottom:0.5px solid var(--bd);
+  border-right:0.5px solid var(--bd);vertical-align:top;position:sticky;top:0;z-index:1;
+}
+.prod-hdr-cell.sticky-corner{
+  position:sticky;left:0;z-index:3;background:var(--surf2);
+}
+.prod-name{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
+.prod-spu{font-size:10px;color:var(--tx3)}
+.prod-edit-btn{font-size:9px;color:var(--tx3);border:0.5px solid var(--bd);border-radius:3px;padding:1px 4px;cursor:pointer;margin-left:4px;opacity:0;transition:opacity .15s}
+.prod-hdr-cell:hover .prod-edit-btn{opacity:1}
+
+/* Progress bar inside header */
+.prod-prog{margin-top:5px}
+.prod-prog-row{display:flex;justify-content:space-between;font-size:9px;color:var(--tx2);margin-bottom:2px}
+.prod-prog-pct{font-weight:600}.ok{color:var(--g)}.lo{color:var(--r)}
+.prod-prog-bg{height:3px;background:var(--bd);border-radius:2px;overflow:hidden}
+.prod-prog-fill{height:100%;border-radius:2px}
+.c-ok{background:var(--gm)}.c-mid{background:var(--am)}.c-lo{background:var(--rm)}
+
+/* Section header row (spans all columns) */
+.section-row td{
+  font-size:9px;font-weight:600;color:var(--tx3);
+  padding:3px 10px;letter-spacing:.5px;text-transform:uppercase;
+  background:var(--surf2);border-bottom:0.5px solid var(--bd);
+  border-right:0.5px solid var(--bd);
+}
+.section-row td.sec-label{
+  position:sticky;left:0;z-index:2;background:var(--surf2);
+}
+
+/* Data rows */
+.product-table tr.data-row td{
+  padding:4px 10px;border-bottom:0.5px solid var(--bd);border-right:0.5px solid var(--bd);
+  font-size:10px;vertical-align:middle;
+}
+.product-table tr.data-row:last-child td{border-bottom:none}
+.product-table tr.data-row td.field-label{
+  color:var(--tx3);position:sticky;left:0;z-index:2;
+  background:var(--surf2);white-space:nowrap;font-size:10px;
+}
+.product-table tr.data-row td.field-val{
+  font-weight:600;text-align:right;white-space:nowrap;color:var(--tx);
+}
+/* alert coloring on value cells */
+.product-table tr.data-row td.field-val.al{color:var(--r)}
+.product-table tr.data-row td.field-val.gd{color:var(--g)}
+.product-table tr.data-row td.cmp-cell{
+  font-size:9px;color:var(--tx3);text-align:right;padding-left:0;white-space:nowrap;padding-right:10px;
+}
+.cu{color:var(--g)}.cd{color:var(--r)}.cf{color:var(--tx3)}
+.ev{color:var(--tx3)}
+/* top-border accent on product column based on perf */
+.prod-al{border-top:3px solid var(--rm)!important}
+.prod-wn{border-top:3px solid var(--am)!important}
+.prod-gd{border-top:3px solid var(--gm)!important}
+.prod-no{border-top:3px solid transparent}
+
+/* Hint row */
+.hint-row td{font-size:10px;padding:3px 10px;background:var(--abg);color:var(--a);border-right:0.5px solid var(--bd);border-bottom:0.5px solid var(--bd)}
+.hint-row td.hl{position:sticky;left:0;z-index:2;background:var(--abg)}
+
+/* ── MODAL ── */
+.mbg{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:200}
+.mbox{background:var(--surf);border:0.5px solid var(--bd2);border-radius:14px;padding:20px;width:min(96vw,960px);max-height:92vh;overflow-y:auto}
+.mbox h2{font-size:15px;font-weight:600;margin-bottom:4px}
+.msub{font-size:11px;color:var(--tx2);margin-bottom:14px;line-height:1.6}
+.msec{font-size:11px;font-weight:600;color:var(--tx2);margin:14px 0 6px;padding-bottom:3px;border-bottom:0.5px solid var(--bd)}
+.mg2{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px}
+.fl{font-size:11px;color:var(--tx2);display:block;margin-bottom:3px}
+.mbox input,.mbox select,.mbox textarea{width:100%;border:0.5px solid var(--bd2);border-radius:var(--rad);padding:5px 9px;font-size:12px;background:var(--surf);color:var(--tx)}
+.mbox input:focus,.mbox select:focus{outline:none;border-color:var(--bm)}
+.mbox textarea{min-height:52px;resize:vertical}
+.mfoot{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.mfoot button{border:0.5px solid var(--bd2);border-radius:var(--rad);padding:5px 14px;font-size:12px;font-weight:500;cursor:pointer;background:none;color:var(--tx)}
+.mfoot button:hover{background:var(--surf2)}
+.mfoot .mp{background:var(--tx);color:var(--surf);border-color:var(--tx)}
+.mfoot .mp:hover{opacity:.88}
+.mfoot .md{color:var(--r)}
+
+/* upload */
+.usteps{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px}
+.ustep{flex:1;border:0.5px solid var(--bd);border-radius:var(--radl);overflow:hidden}
+.ush{padding:8px 12px;display:flex;align-items:center;gap:7px;border-bottom:0.5px solid var(--bd);background:var(--surf2);font-size:11px;font-weight:600}
+.ush .n{width:18px;height:18px;border-radius:50%;background:var(--tx);color:var(--surf);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
+.ush .tag{font-size:10px;color:var(--tx3);font-weight:400;margin-left:auto}
+.usb{padding:10px 12px}
+.usb .desc{font-size:10px;color:var(--tx2);margin-bottom:5px;line-height:1.5}
+.usb .flds{font-size:10px;color:var(--tx3);line-height:1.6}
+.usb .flds b{color:var(--tx2);font-weight:600}
+.dz{border:1.5px dashed var(--bd2);border-radius:var(--rad);padding:12px 8px;text-align:center;cursor:pointer;margin-top:7px;transition:all .15s}
+.dz:hover,.dz.drag{border-color:var(--bm);background:var(--bbg)}
+.dz input{display:none}
+.dz-ic{font-size:20px;margin-bottom:3px}
+.dz-tx{font-size:11px;color:var(--tx2)}
+.dz.done{border-color:var(--gm);background:var(--gbg)}
+.dz.done .dz-tx{color:var(--g)}
+.pstat{font-size:11px;margin-top:6px;padding:4px 8px;border-radius:var(--rad);background:var(--surf2);color:var(--tx2)}
+.pstat.ok{background:var(--gbg);color:var(--g)}
+.pstat.er{background:var(--rbg);color:var(--r)}
+.pvw{margin-top:10px;overflow-x:auto;max-height:260px;overflow-y:auto;border:0.5px solid var(--bd);border-radius:var(--rad);background:var(--surf)}
+.ptbl{width:100%;border-collapse:collapse;font-size:11px}
+.ptbl th{position:sticky;top:0;background:var(--surf2);padding:4px 10px;text-align:left;border-bottom:0.5px solid var(--bd2);white-space:nowrap;font-weight:600;color:var(--tx);font-size:11px}
+.ptbl td{padding:4px 10px;border-bottom:0.5px solid var(--bd);white-space:nowrap;background:var(--surf)}
+.tnew{font-size:10px;background:var(--gbg);color:var(--g);border-radius:3px;padding:0 4px;font-weight:600}
+.tupd{font-size:10px;background:var(--abg);color:var(--a);border-radius:3px;padding:0 4px;font-weight:600}
+.itbl{width:100%;border-collapse:collapse;font-size:11px}
+.itbl th{text-align:left;padding:3px 6px;color:var(--tx2);border-bottom:0.5px solid var(--bd);white-space:nowrap;font-weight:500}
+.itbl td{padding:2px 4px;border-bottom:0.5px solid var(--bd);vertical-align:top}
+.itbl input,.itbl select{width:100%;border:0.5px solid var(--bd2);border-radius:4px;padding:2px 5px;font-size:11px;background:var(--surf);color:var(--tx)}
+
+.sync-dot{width:7px;height:7px;border-radius:50%;background:var(--tx3);flex-shrink:0;display:inline-block}
+.sync-dot.ok{background:var(--gm)}
+.sync-dot.saving{background:var(--am);animation:pulse .8s ease-in-out infinite}
+.sync-dot.err{background:var(--rm)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+</style>
+</head>
+<body>
+
+<div id="login-screen" style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg)">
+  <div style="background:var(--surf);border:0.5px solid var(--bd2);border-radius:16px;padding:36px;width:320px;text-align:center">
+    <div style="font-size:28px;margin-bottom:12px">📊</div>
+    <h2 style="font-size:17px;font-weight:600;margin-bottom:6px">TK 爆品看板</h2>
+    <p style="font-size:12px;color:var(--tx2);margin-bottom:22px">请输入团队密码</p>
+    <input type="password" id="pw-input" placeholder="访问密码"
+      style="width:100%;border:0.5px solid var(--bd2);border-radius:8px;padding:10px 14px;font-size:14px;background:var(--surf);color:var(--tx);margin-bottom:10px;text-align:center;letter-spacing:2px"
+      onkeydown="if(event.key==='Enter')doLogin()">
+    <button onclick="doLogin()"
+      style="width:100%;background:var(--tx);color:var(--surf);border:none;border-radius:8px;padding:10px;font-size:13px;font-weight:600;cursor:pointer">进入看板</button>
+    <div id="login-err" style="font-size:12px;color:var(--r);margin-top:8px"></div>
+  </div>
+</div>
+
+<div id="main-app" style="display:none">
+
+<div style="display:flex;align-items:center;gap:8px;padding:6px 14px;background:var(--surf);border-bottom:0.5px solid var(--bd);font-size:11px;color:var(--tx2)">
+  <span id="sync-dot" class="sync-dot"></span>
+  <span id="sync-label">正在连接…</span>
+  <button onclick="loadCloud()" style="background:none;border:0.5px solid var(--bd2);border-radius:4px;padding:2px 8px;cursor:pointer;font-size:10px;color:var(--tx2);margin-left:4px">↻ 刷新</button>
+  <span id="sync-time" style="margin-left:auto;color:var(--tx3)"></span>
+</div>
+
+<div class="app">
+  <div class="topbar">
+    <h1>TK 爆品生命周期看板 <em>· Indonesia</em></h1>
+    <div class="ctrls">
+      <button class="btn pri" onclick="openUpload()">⬆ 上传表格</button>
+      <button class="btn" onclick="openManual()">✎ 手动录入</button>
+      <button class="btn" onclick="openAdd()">＋ 新增产品</button>
+      <button class="btn" onclick="openManageProducts()" style="color:var(--r)">🗑 管理产品</button>
+    </div>
+  </div>
+
+  <div class="navbar">
+    <div class="wknav">
+      <button onclick="navPrev()">◀</button>
+      <span class="lbl" id="period-lbl">—</span>
+      <button onclick="navNext()">▶</button>
+    </div>
+    <div class="view-seg">
+      <button id="vsw" class="on" onclick="setView('week')">周</button>
+      <button id="vsm" onclick="setView('month')">月</button>
+    </div>
+    <span class="period-sub" id="period-sub"></span>
+    <label class="cmp-toggle">
+      <input type="checkbox" id="cmp-chk" checked onchange="renderAll()">
+      显示对比
+    </label>
+  </div>
+
+  <!-- summary table -->
+  <div class="sw"><table class="st">
+    <thead><tr>
+      <th style="background:var(--surf2);text-align:left;min-width:100px" id="st-period">—</th>
+      <th class="th-t">测品期</th><th class="th-n">新品孵化</th>
+      <th class="th-b">爆发期</th><th class="th-s">维稳期</th><th class="th-d">衰退期</th>
+    </tr></thead>
+    <tbody id="stb"></tbody>
+  </table></div>
+
+  <div class="stages" id="stages"></div>
+</div>
+<div id="modal"></div>
+
+<script>
+const STAGES=[
+  {key:'test',   label:'测品期',  sh:'sh-t'},
+  {key:'new',    label:'新品孵化',sh:'sh-n'},
+  {key:'blast',  label:'爆发期',  sh:'sh-b'},
+  {key:'stable', label:'维稳期',  sh:'sh-s'},
+  {key:'decline',label:'衰退期',  sh:'sh-d'},
+];
+
+const stageOpen={test:false,new:true,blast:true,stable:true,decline:true};
+
+// Fields — auto:true = computed; cmp:true = show comparison
+const FIELDS={
+  // 测品期: TK CTR, TK CVR, SP CTR, SP CVR, 完播率, 直播停留
+  test:[
+    {k:'tkCtr',         l:'TK CTR',          type:'pct', cmp:true, sec:'商品卡数据'},
+    {k:'tkCvr',         l:'TK CVR',          type:'pct', cmp:true},
+    {k:'spCtr',         l:'SP CTR',          type:'pct', cmp:true},
+    {k:'spCvr',         l:'SP CVR',          type:'pct', cmp:true},
+    {k:'vidFinishRate', l:'完播率',            type:'pct', cmp:true, sec:'内容'},
+    {k:'liveStay',      l:'直播停留(s)',       type:'num', cmp:true, sec:'直播'},
+  ],
+  // 新品孵化: 总销量/GMV/TK/SP销量, 促销活动, TK impression/CVR, SP impression/CVR,
+  //           brief类型/数量, video impression, 达人销量/creator/videos/新合作,
+  //           直播impression, TK ROI, 有效素材数, SP ROI
+  new:[
+    {k:'totalOrders',   l:'总销量',            type:'num', cmp:true, auto:true, sec:'销售数据'},
+    {k:'totalGmv',      l:'总GMV',             type:'gmv', cmp:true, auto:true},
+    {k:'tkOrders',      l:'TK销量',            type:'num', cmp:true},
+    {k:'spOrders',      l:'SP销量',            type:'num', cmp:true},
+    {k:'promoNote',     l:'促销活动',           type:'text'},
+    {k:'tkImp',         l:'TK impression',    type:'num', cmp:true, sec:'商品卡数据'},
+    {k:'tkCvr',         l:'TK CVR',           type:'pct', cmp:true},
+    {k:'spImp',         l:'SP impression',    type:'num', cmp:true},
+    {k:'spCvr',         l:'SP CVR',           type:'pct', cmp:true},
+    {k:'briefType',     l:'brief类型',         type:'text', sec:'内容'},
+    {k:'briefCount',    l:'brief数量',         type:'num'},
+    {k:'vidImp',        l:'video impression', type:'num', cmp:true},
+    {k:'kolOrders',     l:'达人销量',           type:'num', cmp:true, sec:'达人'},
+    {k:'kolCreators',   l:'sales creator',   type:'num', cmp:true},
+    {k:'kolVideos',     l:'videos',           type:'num', cmp:true},
+    {k:'kolNewWk',      l:'本周新合作',         type:'num'},
+    {k:'liveImp',       l:'直播impression',    type:'num', cmp:true, sec:'直播'},
+    {k:'tkRoi',         l:'TK ROI',           type:'roi', cmp:true, sec:'广告'},
+    {k:'matCount',      l:'有效素材数',         type:'num', cmp:true},
+    {k:'spRoi',         l:'SP ROI',           type:'roi', cmp:true},
+  ],
+  // 爆发期: 总销量/GMV/TK/SP销量, 毛利率/净利率, 组合销售,
+  //         TK impression, SP impression, 可复用模板数,
+  //         达人销量/GMV/creator/videos/新合作,
+  //         直播impression/CTR/CVR/停留, TK ROI, 有效素材数, SP ROI
+  blast:[
+    {k:'totalOrders',   l:'总销量',            type:'num', cmp:true, auto:true, sec:'销售数据'},
+    {k:'totalGmv',      l:'总GMV',             type:'gmv', cmp:true, auto:true},
+    {k:'tkOrders',      l:'TK销量',            type:'num', cmp:true},
+    {k:'spOrders',      l:'SP销量',            type:'num', cmp:true},
+    {k:'grossMargin',   l:'毛利率',             type:'pct'},
+    {k:'netMargin',     l:'净利率',             type:'pct'},
+    {k:'bundleSales',   l:'组合销售',           type:'num', cmp:true},
+    {k:'tkImp',         l:'TK impression',    type:'num', cmp:true, sec:'商品卡数据'},
+    {k:'spImp',         l:'SP impression',    type:'num', cmp:true},
+    {k:'reuseTemplates',l:'可复用模板数',       type:'num', cmp:true, sec:'内容'},
+    {k:'kolOrders',     l:'达人销量',           type:'num', cmp:true, sec:'达人'},
+    {k:'kolGmv',        l:'达人GMV',            type:'gmv', cmp:true},
+    {k:'kolCreators',   l:'sales creator',   type:'num', cmp:true},
+    {k:'kolVideos',     l:'videos',           type:'num', cmp:true},
+    {k:'kolNewWk',      l:'本周新合作',         type:'num'},
+    {k:'liveImp',       l:'直播impression',    type:'num', cmp:true, sec:'直播'},
+    {k:'liveCtr',       l:'直播CTR',            type:'pct', cmp:true},
+    {k:'liveCvr',       l:'直播CVR',            type:'pct', cmp:true},
+    {k:'liveStay',      l:'直播停留(s)',         type:'num', cmp:true},
+    {k:'tkRoi',         l:'TK ROI',            type:'roi', cmp:true, sec:'广告'},
+    {k:'matCount',      l:'有效素材数',          type:'num', cmp:true},
+    {k:'spRoi',         l:'SP ROI',            type:'roi', cmp:true},
+  ],
+  // 维稳期: 总销量/GMV/TK/SP销量, 毛利率/净利率, 组合销售, 取消率/复购率,
+  //         TK CTR/CVR, SP CTR/CVR, 可复用模板数, video CTR,
+  //         达人销量/GMV/creator/videos/新合作, TK ROI, 有效素材数, SP ROI
+  stable:[
+    {k:'totalOrders',   l:'总销量',            type:'num', cmp:true, auto:true, sec:'销售数据'},
+    {k:'totalGmv',      l:'总GMV',             type:'gmv', cmp:true, auto:true},
+    {k:'tkOrders',      l:'TK销量',            type:'num', cmp:true},
+    {k:'spOrders',      l:'SP销量',            type:'num', cmp:true},
+    {k:'grossMargin',   l:'毛利率',             type:'pct'},
+    {k:'netMargin',     l:'净利率',             type:'pct'},
+    {k:'bundleSales',   l:'组合销售',           type:'num', cmp:true},
+    {k:'cancelRate',    l:'取消率',             type:'pct', cmp:true},
+    {k:'repurchase',    l:'复购率',             type:'pct', cmp:true},
+    {k:'tkCtr',         l:'TK CTR',            type:'pct', cmp:true, sec:'商品卡数据'},
+    {k:'tkCvr',         l:'TK CVR',            type:'pct', cmp:true},
+    {k:'spCtr',         l:'SP CTR',            type:'pct', cmp:true},
+    {k:'spCvr',         l:'SP CVR',            type:'pct', cmp:true},
+    {k:'reuseTemplates',l:'可复用模板数',       type:'num', cmp:true, sec:'内容'},
+    {k:'vidCtr',        l:'video CTR',         type:'pct', cmp:true},
+    {k:'kolOrders',     l:'达人销量',           type:'num', cmp:true, sec:'达人'},
+    {k:'kolGmv',        l:'达人GMV',            type:'gmv', cmp:true},
+    {k:'kolCreators',   l:'sales creator',   type:'num', cmp:true},
+    {k:'kolVideos',     l:'videos',           type:'num', cmp:true},
+    {k:'kolNewWk',      l:'本周新合作',         type:'num'},
+    {k:'tkRoi',         l:'TK ROI',            type:'roi', cmp:true, sec:'广告'},
+    {k:'matCount',      l:'有效素材数',          type:'num', cmp:true},
+    {k:'spRoi',         l:'SP ROI',            type:'roi', cmp:true},
+  ],
+  // 衰退期: 总销量/GMV/TK/SP销量, 毛利率/净利率, 促销活动, 取消率/复购率, 组合销售,
+  //         TK impression/CVR, SP impression/CVR,
+  //         brief类型/数量, 可复用模板数, video CVR,
+  //         达人销量/GMV/creator/videos/新合作,
+  //         直播CVR, TK ROI, 有效素材数, SP ROI
+  decline:[
+    {k:'totalOrders',   l:'总销量',            type:'num', cmp:true, auto:true, sec:'销售数据'},
+    {k:'totalGmv',      l:'总GMV',             type:'gmv', cmp:true, auto:true},
+    {k:'tkOrders',      l:'TK销量',            type:'num', cmp:true},
+    {k:'spOrders',      l:'SP销量',            type:'num', cmp:true},
+    {k:'grossMargin',   l:'毛利率',             type:'pct'},
+    {k:'netMargin',     l:'净利率',             type:'pct'},
+    {k:'promoNote',     l:'促销活动',           type:'text'},
+    {k:'cancelRate',    l:'取消率',             type:'pct', cmp:true},
+    {k:'repurchase',    l:'复购率',             type:'pct', cmp:true},
+    {k:'bundleSales',   l:'组合销售',           type:'num', cmp:true},
+    {k:'tkImp',         l:'TK impression',    type:'num', cmp:true, sec:'商品卡数据'},
+    {k:'tkCvr',         l:'TK CVR',           type:'pct', cmp:true},
+    {k:'spImp',         l:'SP impression',    type:'num', cmp:true},
+    {k:'spCvr',         l:'SP CVR',           type:'pct', cmp:true},
+    {k:'briefType',     l:'brief类型',         type:'text', sec:'内容'},
+    {k:'briefCount',    l:'brief数量',         type:'num'},
+    {k:'reuseTemplates',l:'可复用模板数',       type:'num', cmp:true},
+    {k:'vidCvr',        l:'video CVR',        type:'pct', cmp:true},
+    {k:'kolOrders',     l:'达人销量',           type:'num', cmp:true, sec:'达人'},
+    {k:'kolGmv',        l:'达人GMV',            type:'gmv', cmp:true},
+    {k:'kolCreators',   l:'sales creator',   type:'num', cmp:true},
+    {k:'kolVideos',     l:'videos',           type:'num', cmp:true},
+    {k:'kolNewWk',      l:'本周新合作',         type:'num'},
+    {k:'liveCvr',       l:'直播CVR',            type:'pct', cmp:true, sec:'直播'},
+    {k:'tkRoi',         l:'TK ROI',            type:'roi', cmp:true, sec:'广告'},
+    {k:'matCount',      l:'有效素材数',          type:'num', cmp:true},
+    {k:'spRoi',         l:'SP ROI',            type:'roi', cmp:true},
+  ],
+};
+
+const ALL_FKEYS=[...new Set(Object.values(FIELDS).flat().map(f=>f.k))];
+
+// ── state ──
+let wkOff=0, view='week', month='', eid=null;
+
+function wkLabel(o){const d=new Date();d.setDate(d.getDate()-d.getDay()+1+o*7);const y=d.getFullYear(),s=new Date(y,0,1);const w=Math.ceil(((d-s)/86400000+s.getDay()+1)/7);return`${y} W${String(w).padStart(2,'0')}`}
+function prevWk(wk){const[y,w]=wk.split(' W').map(Number);return w===1?`${y-1} W52`:`${y} W${String(w-1).padStart(2,'0')}`}
+function wk2m(wk){const[y,w]=wk.split(' W').map(Number);const d=new Date(y,0,1);d.setDate(d.getDate()+(w-1)*7-(d.getDay()||7)+1);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`}
+function prevMonth(m){const[y,mo]=m.split('-');return mo==='01'?`${+y-1}-12`:`${y}-${String(+mo-1).padStart(2,'0')}`}
+function nextMonth(m){const[y,mo]=m.split('-');return mo==='12'?`${+y+1}-01`:`${y}-${String(+mo+1).padStart(2,'0')}`}
+function initM(){const n=new Date();month=`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`}
+function navPrev(){if(view==='week')wkOff--;else month=prevMonth(month);renderAll()}
+function navNext(){if(view==='week')wkOff++;else month=nextMonth(month);renderAll()}
+function setView(v){view=v;document.getElementById('vsw').classList.toggle('on',v==='week');document.getElementById('vsm').classList.toggle('on',v==='month');renderAll()}
+
+// ── SPU helpers ──
+function extractSpu(t){if(!t)return null;const m=String(t).match(/SP-[A-Z]*(\d+)/i);return m?m[1]:null}
+function extractName(full,spu){const m=String(full||'').match(/^(.{4,45}?)\s+SP-/i);return m?m[1].trim():`产品 ${spu||'?'}`}
+
+// ── cleaners ──
+function cN(v){if(v==null||v===''||v==='--'||v==='-')return null;const s=String(v).replace(/Rp/gi,'').replace(/\s/g,'').replace(/\./g,'').replace(',','.');const n=parseFloat(s);return isNaN(n)?null:n}
+function cP(v){if(v==null||v===''||v==='--'||v==='-')return null;const s=String(v).replace('%','').replace(',','.').trim();const n=parseFloat(s);if(isNaN(n))return null;return n>1?n/100:n}
+function cG(v){if(v==null||v===''||v==='--')return null;const s=String(v).replace(/Rp/gi,'').replace(/\s/g,'').replace(/\./g,'').replace(',','');const n=parseFloat(s);return isNaN(n)?null:n}
+
+// ── parsers ──
+function applyAuto(e){
+  if(e.tkOrders!=null||e.spOrders!=null)e.totalOrders=(e.tkOrders||0)+(e.spOrders||0);
+  if(e.tkGmv!=null||e.spGmv!=null)e.totalGmv=(e.tkGmv||0)+(e.spGmv||0);
+  if(e.tkImp!=null||e.spImp!=null)e.totalImp=(e.tkImp||0)+(e.spImp||0);
+  return e;
+}
+function parseTK(rows){
+  // Find header row
+  let hi=0;
+  for(let i=0;i<Math.min(rows.length,5);i++){
+    if(String(rows[i][0]||'').trim()==='ID'){hi=i;break;}
+  }
+  // Auto-detect week
+  const ds=String(rows[0]&&rows[0][0]||'');
+  const dm=ds.match(/(\d{4}-\d{2}-\d{2})\s*~\s*(\d{4}-\d{2}-\d{2})/);
+  let detectedWk=null;
+  if(dm){
+    const d=new Date(dm[2]);
+    const y=d.getFullYear(),jan1=new Date(y,0,1);
+    const w=Math.ceil(((d-jan1)/86400000+jan1.getDay()+1)/7);
+    detectedWk=y+' W'+String(w).padStart(2,'0');
+  }
+
+  // Map exact column names (verified against real TK export)
+  const h=rows[hi].map(c=>String(c||'').trim());
+  const ci=name=>h.indexOf(name);
+  const iId=0,iName=1;
+  const iOrders=ci('Orders'),iItems=ci('Items sold'),iGmv=ci('GMV');
+  const iShopImp=ci('Shop tab listing impressions');
+  const iShopCtr=ci('Shop tab clickthrough rate');
+  const iShopCvr=ci('Shop tab conversion rate');
+  const iLiveImp=ci('LIVE impressions');
+  const iLiveCtr=ci('LIVE click-through rate');
+  const iLiveCvr=ci('LIVE conversion rate');
+  const iVidImp=ci('Video impressions');
+  const iVidCtr=ci('Video click-through rate');
+  const iVidCvr=ci('Video conversion rate');
+
+  // Number parsers for Indonesian format (dots=thousands, comma=decimal)
+  function parseNum(v){
+    if(v==null||v==='')return null;
+    const s=String(v).replace(/Rp/gi,'').replace(/\s/g,'').replace(/\./g,'').replace(',','.');
+    const n=parseFloat(s);return isNaN(n)?null:n;
+  }
+  function parseGmv(v){
+    if(v==null||v==='')return null;
+    // Indonesian: "55.911.877" = 55911877 (dots are thousand separators)
+    const s=String(v).replace(/Rp/gi,'').replace(/\s/g,'').replace(/\./g,'').replace(',','.');
+    const n=parseFloat(s);return isNaN(n)?null:n;
+  }
+  function parsePct(v){
+    if(v==null||v==='')return null;
+    const s=String(v).replace('%','').replace(',','.').trim();
+    const n=parseFloat(s);if(isNaN(n))return null;
+    // Values like "5.12" mean 5.12%, store as 0.0512
+    return n>1?n/100:n;
+  }
+
+  const out={detectedWk:detectedWk};
+  for(let i=hi+1;i<rows.length;i++){
+    const r=rows[i];
+    const tkId=String(r[iId]||'').trim();
+    if(!tkId||tkId==='ID')continue;
+    const name=String(r[iName]||'');
+
+    // SPU resolution: 1) built-in TK_ID_MAP, 2) SP- extraction (4+ digits only)
+    let spu=TK_ID_MAP[tkId];
+    if(!spu){
+      const m=name.match(/SP-[A-Z]{0,3}(\d{4,})/i);
+      if(m)spu=m[1];
+    }
+    if(!spu)continue; // skip unmapped products
+
+    const isPrimary=(SPU_PRIMARY[spu]===tkId);
+
+    if(!out[spu])out[spu]={spu:spu,tkId:tkId,name:name,
+      tkOrders:0,tkGmv:0,tkImp:0,liveImp:0,vidImp:0};
+    const d=out[spu];
+
+    // Accumulate totals across all links
+    d.tkOrders+=(parseNum(r[iOrders])||parseNum(r[iItems])||0);
+    d.tkGmv   +=(parseGmv(r[iGmv])||0);
+    d.tkImp   +=(parseNum(r[iShopImp])||0);
+    d.liveImp +=(parseNum(r[iLiveImp])||0);
+    d.vidImp  +=(parseNum(r[iVidImp])||0);
+
+    // Rates: only from primary link (as marked yellow in SPU-SKU对应表)
+    if(isPrimary){
+      if(parsePct(r[iShopCtr])!=null)d.tkCtr=parsePct(r[iShopCtr]);
+      if(parsePct(r[iShopCvr])!=null)d.tkCvr=parsePct(r[iShopCvr]);
+      if(parsePct(r[iLiveCtr])!=null)d.liveCtr=parsePct(r[iLiveCtr]);
+      if(parsePct(r[iLiveCvr])!=null)d.liveCvr=parsePct(r[iLiveCvr]);
+      if(parsePct(r[iVidCtr])!=null)d.vidCtr=parsePct(r[iVidCtr]);
+      if(parsePct(r[iVidCvr])!=null)d.vidCvr=parsePct(r[iVidCvr]);
+    }
+  }
+  // Clean zeros to null
+  Object.keys(out).filter(k=>k!=='detectedWk').forEach(k=>{
+    const d=out[k];
+    ['tkOrders','tkGmv','tkImp','liveImp','vidImp'].forEach(f=>{if(!d[f])d[f]=null;});
+  });
+  return out;
+}
+function parseSP(rows){
+  // Header is row 0 (no date row in Shopee export)
+  const h=rows[0].map(c=>String(c||'').trim());
+  const ci=name=>h.indexOf(name);
+
+  // Auto-detect date from filename not possible, use nav week
+  // But check row 0 for date pattern just in case
+  const ds=String(rows[0][0]||'');
+  const dm=ds.match(/(\d{4}-\d{2}-\d{2})\s*~\s*(\d{4}-\d{2}-\d{2})/);
+  let detectedWk=null;
+  if(dm){
+    const d=new Date(dm[2]);const y=d.getFullYear(),jan1=new Date(y,0,1);
+    const w=Math.ceil(((d-jan1)/86400000+jan1.getDay()+1)/7);
+    detectedWk=y+' W'+String(w).padStart(2,'0');
+  }
+
+  const iName   = ci('Product');
+  const iVarId  = ci('Variation ID');
+  const iGmv    = ci('Sales (Confirmed Order) (IDR)');
+  const iOrd    = ci('Confirmed Order');
+  const iUnits  = ci('Units (Confirmed Order)');
+  const iImp    = ci('Product Impression');
+  const iCtr    = ci('CTR');
+  const iCvr    = ci('Order Conversion Rate (Confirmed Order)');
+  const iRepeat = ci('Repeat Order Rate (Confirmed Order)');
+
+  function parseGmv(v){
+    if(v==null||v==='')return null;
+    // Indonesian format: dots=thousands e.g. "49.840.000" = 49840000
+    const s=String(v).replace(/Rp/gi,'').replace(/\s/g,'').replace(/\./g,'').replace(',','.');
+    const n=parseFloat(s);return isNaN(n)?null:n;
+  }
+  function parseNum(v){
+    if(v==null||v==='')return null;
+    const s=String(v).replace(/,/g,'').trim();
+    const n=parseFloat(s);return isNaN(n)?null:n;
+  }
+  function parsePct(v){
+    if(v==null||v==='')return null;
+    const s=String(v).replace('%','').replace(',','.').trim();
+    const n=parseFloat(s);if(isNaN(n))return null;
+    return n>1?n/100:n;
+  }
+
+  const out={detectedWk:detectedWk};
+  for(let i=1;i<rows.length;i++){
+    const r=rows[i];
+    const name=String(r[iName]||'');
+    // Extract SPU: require 4+ digits to avoid matching short codes
+    const m=name.match(/SP-[A-Z]{0,3}(\d{4,})/i);
+    if(!m)continue;
+    const spu=m[1];
+
+    const varId=String(r[iVarId]||'').trim();
+    const isSpuRow=(varId==='-'||varId==='');
+
+    if(!out[spu])out[spu]={spu:spu,name:name,spGmv:0,spOrders:0};
+    const d=out[spu];
+
+    // Accumulate GMV and orders from ALL rows (SPU + SKU rows)
+    d.spGmv   +=(parseGmv(r[iGmv])||0);
+    d.spOrders+=(parseNum(r[iOrd])||parseNum(r[iUnits])||0);
+
+    // Rates/impression only from SPU-level row (Variation ID = '-')
+    if(isSpuRow){
+      const imp=parseNum(r[iImp]);
+      const ctr=parsePct(r[iCtr]);
+      const cvr=parsePct(r[iCvr]);
+      const rep=parsePct(r[iRepeat]);
+      if(imp!=null)d.spImp=imp;
+      if(ctr!=null)d.spCtr=ctr;
+      if(cvr!=null)d.spCvr=cvr;
+      if(rep!=null)d.repurchase=rep;
+    }
+  }
+  // Clean zeros to null
+  Object.keys(out).filter(k=>k!=='detectedWk').forEach(k=>{
+    const d=out[k];
+    ['spGmv','spOrders','spImp'].forEach(f=>{if(!d[f])d[f]=null;});
+  });
+  return out;
+}
+function parseKOL(rows){
+  let hi=0;
+  for(let i=0;i<Math.min(rows.length,5);i++){
+    if(String(rows[i][0]||'').toLowerCase().includes('product id')){hi=i;break;}
+  }
+  const ds=String(rows[0]&&rows[0][0]||'');
+  const dm=ds.match(/(\d{4}-\d{2}-\d{2})\s*~\s*(\d{4}-\d{2}-\d{2})/);
+  let detectedWk=null;
+  if(dm){const d=new Date(dm[2]);const y=d.getFullYear(),s=new Date(y,0,1);const w=Math.ceil(((d-s)/86400000+s.getDay()+1)/7);detectedWk=y+' W'+String(w).padStart(2,'0');}
+  const out={detectedWk:detectedWk};
+  for(let i=hi+1;i<rows.length;i++){
+    const r=rows[i];
+    const tkId=String(r[0]||'').trim();if(!tkId)continue;
+    const name=String(r[1]||'');
+    const spu=extractSpu(name);
+    const key=spu||tkId;
+    if(!out[key])out[key]={spu:spu,tkId:tkId,name:name,kolGmv:0,kolOrders:0,kolVideos:0,kolCreators:0};
+    const d=out[key];
+    d.kolGmv+=(cG(r[2])||0);d.kolOrders+=(cN(r[3])||0);
+    d.kolCreators+=(cN(r[6])||0);d.kolVideos+=(cN(r[8])||0);
+  }
+  return out;
+}
+
+function parseCost(rows){
+  const out={};
+  // Find header row
+  let hi=0;
+  for(let i=0;i<Math.min(rows.length,3);i++){
+    if(String(rows[i][0]||'').toLowerCase().includes('sku')){hi=i;break;}
+  }
+  for(let i=hi+1;i<rows.length;i++){
+    const r=rows[i];
+    const sku=String(r[0]||'').trim();
+    const cost=parseFloat(String(r[1]||'').replace(/,/g,''));
+    if(!sku||isNaN(cost))continue;
+    const m=sku.match(/SP-[A-Z]*(\d+)/i);
+    if(!m)continue;
+    const spu=m[1];
+    if(!out[spu])out[spu]={costs:[],spu};
+    out[spu].costs.push(cost);
+  }
+  // Average cost per SPU
+  Object.keys(out).forEach(spu=>{
+    const d=out[spu];
+    d.avgCost=d.costs.reduce((a,b)=>a+b,0)/d.costs.length;
+  });
+  return out;
+}
+function fN(v){if(v==null)return null;if(v>=1e6)return(v/1e6).toFixed(1)+'M';if(v>=1000)return(v/1000).toFixed(0)+'K';return String(Math.round(v))}
+function fG(v){if(v==null)return null;if(v>=1e6)return'Rp '+(v/1e6).toFixed(1)+'M';if(v>=1000)return'Rp '+(v/1000).toFixed(0)+'K';return'Rp '+Math.round(v)}
+function fP(v){if(v==null)return null;return(Math.round(v*1000)/10).toFixed(1)+'%'}
+function fR(v){if(v==null)return null;return v.toFixed(2)}
+function fmt(v,t){if(t==='pct')return fP(v);if(t==='gmv')return fG(v);if(t==='roi')return fR(v);return fN(v)}
+
+// ── data access ──
+function gwd(p,wk){return p.weeks.find(w=>w.week===wk)||null}
+function gpwd(p,wk){return p.weeks.find(w=>w.week===prevWk(wk))||null}
+function gma(p,m){
+  const wks=p.weeks.filter(w=>wk2m(w.week)===m);if(!wks.length)return null;
+  const lat=wks[wks.length-1];const sum=k=>wks.reduce((a,w)=>a+(w[k]||0),0);
+  const cumTk=sum('tkOrders'),cumSp=sum('spOrders');
+  return{totalOrders:cumTk+cumSp,totalGmv:sum('tkGmv')+sum('spGmv'),tkOrders:cumTk,spOrders:cumSp,tkGmv:sum('tkGmv'),spGmv:sum('spGmv'),totalImp:(sum('tkImp')+sum('spImp'))||null,tkImp:sum('tkImp'),spImp:sum('spImp'),kolOrders:sum('kolOrders'),kolGmv:sum('kolGmv'),kolVideos:sum('kolVideos'),kolCreators:lat.kolCreators,liveImp:sum('liveImp'),vidImp:sum('vidImp'),matCount:lat.matCount,tkRoi:lat.tkRoi,spRoi:lat.spRoi,tkCtr:lat.tkCtr,tkCvr:lat.tkCvr,spCtr:lat.spCtr,spCvr:lat.spCvr,liveCtr:lat.liveCtr,liveCvr:lat.liveCvr,liveStay:lat.liveStay,vidCtr:lat.vidCtr,vidCvr:lat.vidCvr,grossMargin:lat.grossMargin,netMargin:lat.netMargin,cancelRate:lat.cancelRate,repurchase:lat.repurchase,bundleSales:sum('bundleSales'),reuseTemplates:lat.reuseTemplates,briefType:lat.briefType,briefCount:lat.briefCount,promoNote:lat.promoNote,vidFinishRate:lat.vidFinishRate,monthTarget:p.monthTarget,weeksIn:wks.length};
+}
+function gpma(p,m){return gma(p,prevMonth(m))}
+
+function migrateHint(p,wk){
+  const d=gwd(p,wk);const pw=gpwd(p,wk);if(!d)return null;
+  const chg=pw?.totalOrders&&d.totalOrders?(d.totalOrders-pw.totalOrders)/pw.totalOrders:null;
+  if(p.stage==='new'&&(d.totalOrders||0)>=200&&chg>=0.2)return'可晋升 → 爆发期';
+  if(p.stage==='blast'&&chg!=null&&chg<=-0.15)return'注意 → 可能进入维稳';
+  if(p.stage==='stable'&&chg!=null&&chg<=-0.20)return'注意 → 可能进入衰退';
+  if(p.stage==='decline'&&chg!=null&&chg>=0.10)return'回升 → 复查阶段';
+  return null;
+}
+
+// ── build horizontal stage table ──
+function buildStageTable(st,wk){
+  const ps=products.filter(p=>p.stage===st.key);
+  if(!ps.length)return'<div style="padding:16px;color:var(--tx3);font-size:11px;text-align:center">该阶段暂无产品</div>';
+
+  const showCmp=document.getElementById('cmp-chk').checked;
+  const fields=FIELDS[st.key]||[];
+
+  // gather cur/prev data per product
+  const pdata=ps.map(p=>{
+    const cur=view==='week'?gwd(p,wk):gma(p,month);
+    const prev=view==='week'?gpwd(p,wk):gpma(p,month);
+    const ma=gma(p,month);
+    const chg=cur?.totalOrders&&prev?.totalOrders?(cur.totalOrders-prev.totalOrders)/prev.totalOrders:null;
+    const ac=chg==null?'prod-no':chg<=-0.15?'prod-al':chg<=-0.05?'prod-wn':chg>=0.15?'prod-gd':'prod-no';
+    return{p,cur,prev,ma,ac,hint:migrateHint(p,wk)};
+  });
+
+  // Build table HTML
+  let html=`<div class="product-table-wrap"><table class="product-table">`;
+
+  // ── Header row: field label col + one col per product ──
+  html+=`<colgroup><col class="col-label">${ps.map(()=>`<col class="col-prod">`).join('')}</colgroup>`;
+  html+=`<thead><tr>`;
+  html+=`<td class="prod-hdr-cell sticky-corner" style="font-size:10px;color:var(--tx3);font-weight:500;vertical-align:bottom;padding-bottom:8px">${view==='week'?wk:month}</td>`;
+  pdata.forEach(({p,ma,ac})=>{
+    const cumOrd=ma?.totalOrders;const tgt=p.monthTarget;
+    let progHtml='';
+    if(tgt&&cumOrd!=null){
+      const r=cumOrd/tgt;const w=Math.min(r/1.5*100,100);
+      const cls=r>=1?'c-ok':r>=0.6?'c-mid':'c-lo';
+      const pc=r>=1?'ok':r<0.5?'lo':'';
+      progHtml=`<div class="prod-prog">
+        <div class="prod-prog-row"><span style="white-space:nowrap">${fN(cumOrd)}/${fN(tgt)}</span><span class="prod-prog-pct ${pc}">${Math.round(r*100)}%</span></div>
+        <div class="prod-prog-bg"><div class="prod-prog-fill ${cls}" style="width:${w}%"></div></div>
+      </div>`;
+    }
+    html+=`<td class="prod-hdr-cell ${ac}" onclick="openEdit(${p.id})" style="cursor:pointer">
+      <div style="display:flex;align-items:baseline;gap:4px">
+        <span class="prod-name">${p.name}</span>
+        <span class="prod-edit-btn">编辑</span>
+      </div>
+      <div class="prod-spu">${p.spu}</div>
+      ${progHtml}
+    </td>`;
+  });
+  html+=`</tr></thead>`;
+
+  // ── Data rows ──
+  html+=`<tbody>`;
+  let lastSec=null;
+  fields.forEach(f=>{
+    // Section header row
+    if(f.sec&&f.sec!==lastSec){
+      lastSec=f.sec;
+      html+=`<tr class="section-row"><td class="sec-label">${f.sec}</td>${ps.map(()=>`<td></td>`).join('')}</tr>`;
+    }
+    // Data row
+    html+=`<tr class="data-row">`;
+    // label cell
+    const autoMark=f.auto?'<span style="font-size:9px;color:var(--tx3);margin-left:2px">⟳</span>':'';
+    html+=`<td class="field-label">${f.l}${autoMark}</td>`;
+    // value cells
+    pdata.forEach(({cur,prev})=>{
+      const v=cur?.[f.k];
+      let valStr;
+      if(f.type==='text'){valStr=v||'<span class="ev">—</span>';}
+      else valStr=fmt(v,f.type)||'<span class="ev">—</span>';
+
+      // comparison inline
+      let cmpStr='';
+      if(f.cmp&&showCmp&&prev!=null&&v!=null&&prev[f.k]!=null){
+        const pv=prev[f.k];
+        const diff=(v-pv)/Math.abs(pv||1);
+        const pct=Math.abs(Math.round(diff*100));
+        const arrow=diff>0.02?'↑':diff<-0.02?'↓':'→';
+        const cls=diff>0.02?'cu':diff<-0.02?'cd':'cf';
+        const prevStr=fmt(pv,f.type)||'—';
+        cmpStr=`<span class="${cls}">${arrow}${pct}%</span> <span style="color:var(--tx3)">vs ${prevStr}</span>`;
+      }
+
+      // alert coloring for key metrics
+      let valCls='field-val';
+      if(v!=null&&prev?.[f.k]!=null&&(f.k==='totalOrders'||f.k==='tkOrders')){
+        const chg=(v-prev[f.k])/Math.abs(prev[f.k]);
+        if(chg<=-0.15)valCls+=' al';else if(chg>=0.15)valCls+=' gd';
+      }
+
+      html+=`<td class="${valCls}">${valStr}</td>`;
+      if(showCmp)html+=`<td class="cmp-cell">${cmpStr}</td>`;
+    });
+    html+=`</tr>`;
+  });
+
+  // Hint row (migration alerts)
+  const hints=pdata.map(({hint})=>hint);
+  if(hints.some(Boolean)){
+    html+=`<tr class="hint-row"><td class="hl">⚡ 周期提示</td>`;
+    pdata.forEach(({hint})=>{
+      html+=`<td${showCmp?` colspan="2"`:''} style="font-size:10px">${hint||''}</td>`;
+    });
+    html+=`</tr>`;
+  }
+
+  html+=`</tbody></table></div>`;
+  return html;
+}
+
+// ── render ──
+function renderAll(){
+  const wk=wkLabel(wkOff);
+  const showCmp=document.getElementById('cmp-chk').checked;
+  const prevPeriod=view==='week'?prevWk(wk):prevMonth(month);
+  document.getElementById('period-lbl').textContent=view==='week'?wk:month;
+  document.getElementById('period-sub').textContent=showCmp?`对比：${prevPeriod}`:'';
+  document.getElementById('st-period').textContent=view==='week'?wk:month;
+
+  // summary table
+  const tb=document.getElementById('stb');
+  tb.innerHTML=[
+    {id:'tot',l:'总销量'},{id:'tkO',l:'TK销量'},{id:'spO',l:'SP销量'},
+    {id:'gmv',l:'总GMV'},{id:'kol',l:'达人销量'},
+  ].map(r=>`<tr><td>${r.l}</td>${STAGES.map(s=>`<td id="st-${r.id}-${s.key}">—</td>`).join('')}</tr>`).join('');
+  STAGES.forEach(st=>{
+    const ps=products.filter(p=>p.stage===st.key);
+    let tot=0,tkO=0,spO=0,gmv=0,kol=0,any=false;
+    ps.forEach(p=>{const d=view==='week'?gwd(p,wk):gma(p,month);if(!d)return;any=true;tot+=(d.totalOrders||0);tkO+=(d.tkOrders||0);spO+=(d.spOrders||0);gmv+=(d.totalGmv||0);kol+=(d.kolOrders||0);});
+    const s=(id,v)=>{const el=document.getElementById(`st-${id}-${st.key}`);if(el)el.textContent=any?v:'—'};
+    s('tot',fN(tot)||'—');s('tkO',fN(tkO)||'—');s('spO',fN(spO)||'—');s('gmv',fG(gmv)||'—');s('kol',fN(kol)||'—');
+  });
+
+  // accordion stages
+  const container=document.getElementById('stages');container.innerHTML='';
+  STAGES.forEach(st=>{
+    const ps=products.filter(p=>p.stage===st.key);
+    const isOpen=stageOpen[st.key];
+
+    // mini summary totals
+    let tot=0,tkO=0,spO=0,any=false;
+    ps.forEach(p=>{const d=view==='week'?gwd(p,wk):gma(p,month);if(!d)return;any=true;tot+=(d.totalOrders||0);tkO+=(d.tkOrders||0);spO+=(d.spOrders||0);});
+    const mini=any
+      ?`<span>总 <b>${fN(tot)||'—'}</b></span><span>TK <b>${fN(tkO)||'—'}</b></span><span>SP <b>${fN(spO)||'—'}</b></span>`
+      :'<span style="color:var(--tx3)">暂无数据</span>';
+
+    const block=document.createElement('div');block.className='stage-block';
+    const bodyId=`sb-${st.key}`;
+
+    // compute max height for open state (rough estimate)
+    const fieldCount=(FIELDS[st.key]||[]).length;
+    const rowH=22;const hdrH=80;const openH=hdrH+fieldCount*rowH+80;
+
+    block.innerHTML=`
+      <div class="stage-hdr ${st.sh} ${isOpen?'open':''}" onclick="toggleStage('${st.key}',this,'${bodyId}')">
+        <span class="sh-title">${st.label}</span>
+        <span class="sh-count">${ps.length}</span>
+        <span class="sh-summary">${mini}</span>
+        <span class="sh-arrow">▾</span>
+      </div>
+      <div class="stage-body ${isOpen?'':'closed'}" id="${bodyId}" style="max-height:${isOpen?openH+'px':'0'}">
+        ${isOpen?buildStageTable(st,wk):''}
+      </div>`;
+    container.appendChild(block);
+  });
+}
+
+function toggleStage(key,hdrEl,bodyId){
+  stageOpen[key]=!stageOpen[key];
+  hdrEl.classList.toggle('open',stageOpen[key]);
+  const body=document.getElementById(bodyId);
+  if(stageOpen[key]){
+    const wk=wkLabel(wkOff);
+    const st=STAGES.find(s=>s.key===key);
+    body.innerHTML=buildStageTable(st,wk);
+    const fieldCount=(FIELDS[key]||[]).length;
+    body.style.maxHeight=(80+fieldCount*22+80)+'px';
+    body.classList.remove('closed');
+  } else {
+    body.style.maxHeight='0';
+    body.classList.add('closed');
+  }
+}
+
+// ── upload modal ──
+let ups={tk:null,sp:null,kol:null,cost:null};
+function openUpload(){
+  ups={tk:null,sp:null,kol:null};
+  showModal(`
+    <h2>⬆ 上传数据表格</h2>
+    <p class="msub">三张表独立上传，自动从商品名提取 SPU（SP-AAD<b>1231</b>→<b>1231</b>），按 SPU 合并写入当前周。上传字段自动更新，未覆盖字段（毛利率/brief等）保留原值需手动补充。</p>
+    <div class="usteps">
+      <div class="ustep"><div class="ush"><span class="n">1</span>TK Product<span class="tag">TK Shop后台</span></div>
+        <div class="usb"><div class="desc">TK Shop后台 → 商品分析 → 导出</div>
+          <div class="flds">抓取：<b>TK销量/GMV</b> · <b>商品卡CTR/CVR</b> · <b>视频impression/CTR/CVR</b> · <b>直播impression/CTR/CVR/停留</b></div>
+          <div class="dz" id="dz-tk" onclick="document.getElementById('fi-tk').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="event.preventDefault();this.classList.remove('drag');hf('tk',event.dataTransfer.files)">
+            <input type="file" id="fi-tk" accept=".xlsx,.xls,.csv" onchange="hf('tk',this.files)">
+            <div class="dz-ic">📊</div><div class="dz-tx">点击或拖拽</div></div>
+          <div class="pstat" id="ps-tk">等待上传…</div></div></div>
+      <div class="ustep"><div class="ush"><span class="n">2</span>Shopee Product<span class="tag">Shopee后台</span></div>
+        <div class="usb"><div class="desc">Shopee Seller Centre → 数据中心 → 商品数据</div>
+          <div class="flds">抓取：<b>SP销量/GMV</b>（SKU自动汇总）· <b>impression</b> · <b>CTR/CVR</b> · <b>复购率</b></div>
+          <div class="dz" id="dz-sp" onclick="document.getElementById('fi-sp').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="event.preventDefault();this.classList.remove('drag');hf('sp',event.dataTransfer.files)">
+            <input type="file" id="fi-sp" accept=".xlsx,.xls,.csv" onchange="hf('sp',this.files)">
+            <div class="dz-ic">🛒</div><div class="dz-tx">点击或拖拽</div></div>
+          <div class="pstat" id="ps-sp">等待上传…</div></div></div>
+      <div class="ustep"><div class="ush"><span class="n">3</span>达人数据<span class="tag">TK达人后台</span></div>
+        <div class="usb"><div class="desc">TK Creator Marketplace → 商品分析 → 导出</div>
+          <div class="flds">抓取：<b>达人销量/GMV</b> · <b>sales creator数</b> · <b>videos数</b></div>
+          <div class="dz" id="dz-kol" onclick="document.getElementById('fi-kol').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="event.preventDefault();this.classList.remove('drag');hf('kol',event.dataTransfer.files)">
+            <input type="file" id="fi-kol" accept=".xlsx,.xls,.csv" onchange="hf('kol',this.files)">
+            <div class="dz-ic">🎬</div><div class="dz-tx">点击或拖拽</div></div>
+          <div class="pstat" id="ps-kol">等待上传…</div></div></div>
+    </div>
+    <div class="ustep" style="grid-column:1/-1;border:0.5px solid var(--bd);border-radius:var(--radl);overflow:hidden">
+        <div class="ush"><span class="n" style="background:var(--gm)">4</span>成本表（可选）— 上传后自动计算毛利率</div>
+        <div class="usb">
+          <div class="desc">上传 SKU 成本 CSV（格式：sku, cost）自动计算毛利率</div>
+          <div class="flds">提取：<b>每SPU平均成本</b> → 结合销售额自动算毛利率</div>
+          <div class="dz" id="dz-cost" onclick="document.getElementById('fi-cost').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="event.preventDefault();this.classList.remove('drag');hf('cost',event.dataTransfer.files)">
+            <input type="file" id="fi-cost" accept=".xlsx,.xls,.csv" onchange="hf('cost',this.files)">
+            <div class="dz-ic">💰</div><div class="dz-tx">点击或拖拽</div></div>
+          <div class="pstat" id="ps-cost">可选，不上传也可以</div>
+        </div>
+      </div>
+    </div>
+    <div id="upv"></div>
+    <div class="mfoot"><button onclick="closeModal()">取消</button><button class="mp" id="cbtn" onclick="confirmUpload()" style="display:none">确认导入</button></div>`);
+}
+function hf(type,files){
+  if(!files||!files.length)return;
+  const file=files[0];const pEl=document.getElementById(`ps-${type}`);const dzEl=document.getElementById(`dz-${type}`);
+  pEl.textContent=`解析 ${file.name}…`;pEl.className='pstat';
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      let rows;
+      if(file.name.toLowerCase().endsWith('.csv')){rows=csvRows(e.target.result);}
+      else{const wb=XLSX.read(e.target.result,{type:'binary'});const ws=wb.Sheets[wb.SheetNames[0]];rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});}
+      if(!rows||rows.length<2)throw new Error('文件为空');
+      let parsed={};
+      if(type==='tk')parsed=parseTK(rows);else if(type==='sp')parsed=parseSP(rows);else if(type==='kol')parsed=parseKOL(rows);else parsed=parseCost(rows);
+      const cnt=Object.keys(parsed).filter(k=>k!=='detectedWk').length;ups[type]=parsed;
+      const wkHint=parsed.detectedWk?' · 自动写入'+parsed.detectedWk:'';
+      const matchCnt=type==='cost'?cnt:Object.keys(parsed).filter(k=>k!=='detectedWk'&&products.find(p=>p.spu===k)).length;
+      const skipCnt=cnt-matchCnt;
+      const skipNote=skipCnt>0&&type!=='cost'?' ('+skipCnt+'个未匹配忽略)':'';
+      pEl.textContent='✓ 匹配 '+matchCnt+(type==='cost'?'个SPU成本':' 个产品')+skipNote+wkHint;pEl.className='pstat ok';dzEl.classList.add('done');
+      renderUpvPreview();document.getElementById('cbtn').style.display='';
+    }catch(err){pEl.textContent=`失败：${err.message}`;pEl.className='pstat er';}
+  };
+  if(file.name.toLowerCase().endsWith('.csv'))reader.readAsText(file);else reader.readAsBinaryString(file);
+}
+function csvRows(text){return text.split('\n').filter(l=>l.trim()).map(l=>{const res=[];let cur='',inQ=false;for(const c of l){if(c==='"')inQ=!inQ;else if(c===','&&!inQ){res.push(cur);cur='';}else cur+=c;}res.push(cur);return res;})}
+function renderUpvPreview(){
+  // Build tkId→spu map: first from built-in TK_ID_MAP, then from product.tkIds
+  const tkIdToSpuPv=Object.assign({},TK_ID_MAP);
+  products.forEach(function(p){(p.tkIds||[]).forEach(function(id){if(id)tkIdToSpuPv[id.trim()]=p.spu;});});
+  const merged={};
+  ['tk','sp','kol'].forEach(t=>{
+    if(!ups[t])return;
+    Object.entries(ups[t]).forEach(([k,d])=>{
+      if(k==='detectedWk')return;
+      // Resolve TK ID to SPU if possible
+      let resolvedKey=k;
+      if(tkIdToSpuPv[k])resolvedKey=tkIdToSpuPv[k];
+      else if(d.tkId&&tkIdToSpuPv[d.tkId])resolvedKey=tkIdToSpuPv[d.tkId];
+      if(!merged[resolvedKey])merged[resolvedKey]={spu:resolvedKey};
+      Object.assign(merged[resolvedKey],d);
+    });
+  });
+  const allSpus=Object.keys(merged);
+  if(!allSpus.length){document.getElementById('upv').innerHTML='';return;}
+  // Only show SPUs that match existing products
+  const matchedSpus=allSpus.filter(spu=>products.find(p=>p.spu===spu));
+  const skipped=allSpus.length-matchedSpus.length;
+  if(!matchedSpus.length){
+    document.getElementById('upv').innerHTML=`<div style="padding:12px;color:var(--r);font-size:12px;background:var(--rbg);border-radius:8px;margin-top:8px">⚠ 表格中 ${allSpus.length} 个SPU均未在看板中找到匹配产品。<br>请先在看板里手动录入产品（含正确SPU编号），再上传数据。</div>`;
+    document.getElementById('cbtn').style.display='none';
+    return;
+  }
+  const rows=matchedSpus.map(spu=>{
+    const d=merged[spu];
+    const ex=products.find(p=>p.spu===spu);
+    const stageLabel=STAGES.find(s=>s.key===ex.stage)?.label||ex.stage;
+    // Store spu→stage mapping for confirmUpload to read
+    return`<tr data-spu="${spu}">
+      <td><span class="tupd">匹配</span></td>
+      <td style="font-weight:600;font-size:11px">${spu}</td>
+      <td style="font-size:11px;font-weight:600">${ex.name}</td>
+      <td style="font-size:11px;color:var(--tx2)">${stageLabel}</td>
+      <td style="font-size:11px;text-align:right">${d.tkOrders!=null?fN(d.tkOrders):'—'}</td>
+      <td style="font-size:11px;text-align:right">${d.spOrders!=null?fN(d.spOrders):'—'}</td>
+      <td style="font-size:11px;text-align:right">${d.tkGmv!=null?fG(d.tkGmv)||'—':'—'}</td>
+      <td style="font-size:11px;text-align:right">${d.tkCtr!=null?fP(d.tkCtr):'—'}</td>
+      <td style="font-size:11px;text-align:right">${d.kolOrders!=null?fN(d.kolOrders):'—'}</td>
+    </tr>`;
+  }).join('');
+  const skipNote=skipped>0?`<span style="color:var(--tx3);font-weight:400;margin-left:8px">忽略 ${skipped} 个未知SPU</span>`:'';
+  document.getElementById('upv').innerHTML=`
+    <div class="msec" style="margin-top:10px">匹配到 ${matchedSpus.length} 个产品${skipNote}</div>
+    <div class="pvw"><table class="ptbl"><thead><tr>
+      <th>状态</th><th>SPU</th><th>产品名</th><th>当前阶段</th><th style="text-align:right">TK销量</th><th style="text-align:right">SP销量</th><th style="text-align:right">TK GMV</th><th style="text-align:right">TK CTR</th><th style="text-align:right">达人出单</th>
+    </tr></thead><tbody>${rows}</tbody></table></div>`;
+  document.getElementById('cbtn').style.display='';
+;
+}
+function confirmUpload(){
+  const importBatchId='import_'+Date.now();
+  const importedSpus=[];
+  const detectedWks=[ups.tk&&ups.tk.detectedWk,ups.sp&&ups.sp.detectedWk,ups.kol&&ups.kol.detectedWk].filter(Boolean);
+  const wk=detectedWks[0]||wkLabel(wkOff);
+  // Build tkId → spu mapping from existing products
+  const tkIdToSpu={};
+  products.forEach(function(p){
+    (p.tkIds||[]).forEach(function(tkId){
+      if(tkId)tkIdToSpu[tkId.trim()]=p.spu;
+    });
+  });
+
+  const merged={};
+  ['tk','sp','kol'].forEach(function(t){
+    if(!ups[t])return;
+    Object.entries(ups[t]).forEach(function(ent){
+      var k=ent[0],d=ent[1];
+      if(k==='detectedWk')return;
+      // k is either SPU (from SP- extraction) or TK ID (fallback)
+      // Try to resolve TK ID to SPU via tkIdToSpu map
+      var resolvedKey=k;
+      if(tkIdToSpu[k])resolvedKey=tkIdToSpu[k];
+      else if(d.tkId&&tkIdToSpu[d.tkId])resolvedKey=tkIdToSpu[d.tkId];
+      if(!merged[resolvedKey])merged[resolvedKey]={spu:resolvedKey};
+      // Merge data, accumulating numerics
+      var existing=merged[resolvedKey];
+      ['tkOrders','tkGmv','tkImp','liveImp','vidImp','kolOrders','kolGmv','kolVideos','kolCreators',
+       'spOrders','spGmv'].forEach(function(f){
+        if(d[f]!=null&&d[f]!==0)existing[f]=(existing[f]||0)+d[f];
+      });
+      ['tkCtr','tkCvr','spCtr','spCvr','spImp','liveCtr','liveCvr','liveStay',
+       'vidCtr','vidCvr','repurchase','name'].forEach(function(f){
+        if(d[f]!=null)existing[f]=d[f];
+      });
+    });
+  });
+  const numFlds=['tkOrders','tkGmv','spOrders','spGmv','tkImp','liveImp','liveOrders','liveGmv','vidImp','vidOrders','vidGmv','pcImp','kolOrders','kolGmv','kolVideos','kolCreators'];
+  const rateFlds=['tkCtr','tkCvr','spCtr','spCvr','spImp','liveCtr','liveCvr','liveStay','vidCtr','vidCvr','pcCtr','pcCvr','repurchase'];
+  Object.entries(merged).forEach(function(me){
+    var spu=me[0],d=me[1];
+    const ex=products.find(function(p){return p.spu===spu;});
+    // Use existing product stage — don't override from UI
+    const stageKeep=ex?ex.stage:'test';
+    const entry={week:wk};
+    numFlds.forEach(function(k){if(d[k]!=null&&d[k]!==0)entry[k]=d[k];});
+    rateFlds.forEach(function(k){if(d[k]!=null)entry[k]=d[k];});
+    applyAuto(entry);
+    if(ex){
+      // Keep existing stage (don't overwrite)
+      importedSpus.push(spu);
+      ex._lastImport=importBatchId;
+      const exWk=ex.weeks.find(function(w){return w.week===wk;});
+      if(exWk){
+        numFlds.forEach(function(k){if(entry[k]!=null)exWk[k]=(exWk[k]||0)+entry[k];});
+        rateFlds.forEach(function(k){if(entry[k]!=null)exWk[k]=entry[k];});
+        applyAuto(exWk);
+      } else {
+        ex.weeks.push(entry);
+      }
+    }
+    // Unknown SPU — silently skip, only update existing products
+  });
+  // Apply cost data to calculate gross margin
+  if(ups.cost){
+    Object.entries(ups.cost).forEach(function(ce){
+      var spu=ce[0],costData=ce[1];
+      var p=products.find(function(pr){return pr.spu===spu;});
+      if(!p||!costData.avgCost)return;
+      p.avgCost=costData.avgCost;
+      // Calculate gross margin for matched week entry
+      var exWk=p.weeks.find(function(w){return w.week===wk;});
+      if(exWk&&exWk.totalGmv&&exWk.totalOrders){
+        var totalCost=costData.avgCost*exWk.totalOrders;
+        exWk.grossMargin=Math.max(0,1-(totalCost/exWk.totalGmv));
+      }
+    });
+  }
+  closeModal();renderAll();scheduleSave();
+  if(importedSpus.length>0){
+    setTimeout(function(){
+      alert('✓ 成功匹配并更新 '+importedSpus.length+' 个产品\nSPU: '+importedSpus.join(', '));
+    },500);
+  } else {
+    setTimeout(function(){
+      alert('⚠ 未匹配到任何已有产品\n请确认看板里已录入对应SPU的产品');
+    },500);
+  }
+}
+
+function openManual(){
+  const wk=wkLabel(wkOff);
+  const secs=STAGES.map(st=>{
+    const ps=products.filter(p=>p.stage===st.key);if(!ps.length)return'';
+    const fields=FIELDS[st.key].filter(f=>!f.auto);
+    const hc=fields.map(f=>`<th style="white-space:nowrap">${f.l}</th>`).join('');
+    const rs=ps.map(p=>{
+      const d=gwd(p,wk)||{};
+      const stOpts=STAGES.map(s=>`<option value="${s.key}"${p.stage===s.key?' selected':''}>${s.label}</option>`).join('');
+      const cells=fields.map(f=>{const v=d[f.k]!=null?d[f.k]:'';const isText=f.type==='text';return`<td><input id="im-${p.id}-${f.k}" type="${isText?'text':'number'}" step="0.0001" value="${String(v).replace(/"/g,'&quot;')}" style="min-width:${isText?70:52}px"></td>`;}).join('');
+      return`<tr><td style="white-space:nowrap;font-weight:600;font-size:11px">${p.name}<br><span style="color:var(--tx3);font-weight:400">${p.spu}</span></td><td><select id="im-${p.id}-stage">${stOpts}</select></td>${cells}<td><input id="im-${p.id}-mt" type="number" value="${p.monthTarget||''}" style="min-width:58px"></td></tr>`;
+    }).join('');
+    return`<div style="margin-bottom:16px"><div class="msec">${st.label}</div><div style="overflow-x:auto"><table class="itbl"><thead><tr><th>产品/SPU</th><th>阶段</th>${hc}<th>月目标</th></tr></thead><tbody>${rs}</tbody></table></div></div>`;
+  }).join('');
+  showModal(`<h2>手动录入 — ${wk}</h2><p class="msub">百分比填小数（0.038=3.8%），总销量/GMV/impression 自动计算。</p>${secs||'<p style="color:var(--tx2)">暂无产品</p>'}<div class="mfoot"><button onclick="closeModal()">取消</button><button class="mp" onclick="saveManual('${wk}')">保存</button></div>`);
+}
+function saveManual(wk){
+  products.forEach(p=>{
+    const stEl=document.getElementById(`im-${p.id}-stage`);if(stEl)p.stage=stEl.value;
+    const mtEl=document.getElementById(`im-${p.id}-mt`);if(mtEl&&mtEl.value)p.monthTarget=parseFloat(mtEl.value);
+    const entry={week:wk};
+    FIELDS[p.stage].filter(f=>!f.auto).forEach(f=>{const el=document.getElementById(`im-${p.id}-${f.k}`);if(!el||el.value==='')return;entry[f.k]=el.type==='number'?parseFloat(el.value):el.value;});
+    applyAuto(entry);
+    const ex=p.weeks.find(x=>x.week===wk);if(ex)Object.assign(ex,entry);else if(Object.keys(entry).length>1)p.weeks.push(entry);
+  });
+  closeModal();renderAll();scheduleSave();
+}
+
+// ── edit / add / delete ──
+function openEdit(id){
+  eid=id;const p=products.find(x=>x.id===id);const wk=wkLabel(wkOff);const d=gwd(p,wk)||{};
+  const stOpts=STAGES.map(s=>`<option value="${s.key}"${p.stage===s.key?' selected':''}>${s.label}</option>`).join('');
+  const fields=FIELDS[p.stage].filter(f=>!f.auto);
+  const inputs=fields.map(f=>{const v=d[f.k]!=null?d[f.k]:'';const isText=f.type==='text';return`<div><label class="fl">${f.l}</label><input id="ef-${f.k}" type="${isText?'text':'number'}" step="0.0001" value="${String(v).replace(/"/g,'&quot;')}"></div>`;});
+  const half=Math.ceil(inputs.length/2);
+  showModal(`<h2>${p.name} <span style="font-size:11px;color:var(--tx3)">SPU ${p.spu}</span></h2>
+    <div class="msec">产品信息</div><div class="mg2">
+      <div><label class="fl">产品名称</label><input id="ef-nm" type="text" value="${p.name.replace(/"/g,'&quot;')}"></div>
+      <div><label class="fl">SPU编号</label><input id="ef-spu" type="text" value="${p.spu}"></div>
+      <div><label class="fl">月订单目标</label><input id="ef-tgt" type="number" value="${p.monthTarget||''}"></div>
+      <div><label class="fl">生命周期阶段</label><select id="ef-stg">${stOpts}</select></div>
+      <div style="grid-column:1/-1"><label class="fl">关联TK商品ID <span style="color:var(--tx3);font-weight:400">（无SP编号的链接，多个ID用换行或逗号分隔）</span></label><textarea id="ef-tkids" style="width:100%;min-height:60px;font-size:11px;font-family:monospace;border:0.5px solid var(--bd2);border-radius:var(--rad);padding:5px 9px;background:var(--surf);color:var(--tx);resize:vertical">${(p.tkIds||[]).join('\n')}</textarea></div>
+    </div>
+    <div class="msec">本周数据 — ${wk} <span style="font-size:10px;color:var(--tx3);font-weight:400">（⟳ 字段自动计算）</span></div>
+    <div class="mg2"><div>${inputs.slice(0,half).join('')}</div><div>${inputs.slice(half).join('')}</div></div>
+    <div class="mfoot"><button class="md" onclick="delP(${id})">删除</button><button onclick="closeModal()">取消</button><button class="mp" onclick="saveEdit('${wk}')">保存</button></div>`);
+}
+function saveEdit(wk){
+  const p=products.find(x=>x.id===eid);
+  p.name=document.getElementById('ef-nm').value||p.name;p.spu=document.getElementById('ef-spu').value||p.spu;
+  p.stage=document.getElementById('ef-stg').value;
+  const t=document.getElementById('ef-tgt').value;if(t)p.monthTarget=parseFloat(t);
+  const fields=FIELDS[p.stage].filter(f=>!f.auto);
+  const entry={week:wk};
+  fields.forEach(f=>{const el=document.getElementById(`ef-${f.k}`);if(!el||el.value==='')return;entry[f.k]=el.type==='number'?parseFloat(el.value):el.value;});
+  applyAuto(entry);
+  const ex=p.weeks.find(x=>x.week===wk);if(ex)Object.assign(ex,entry);else if(Object.keys(entry).length>1)p.weeks.push(entry);
+  // Save TK IDs mapping
+  const tkIdsEl=document.getElementById('ef-tkids');
+  if(tkIdsEl){
+    const ids=tkIdsEl.value.split(/[,\n\r]+/).map(s=>s.trim()).filter(Boolean);
+    p.tkIds=ids;
+  }
+  closeModal();renderAll();scheduleSave();
+}
+function openAdd(){
+  showModal(`<h2>新增产品</h2><div class="mg2">
+    <div><label class="fl">产品名称</label><input id="an" type="text"></div>
+    <div><label class="fl">SPU编号</label><input id="as" type="text" placeholder="如：1231"></div>
+    <div><label class="fl">月订单目标</label><input id="at" type="number"></div>
+    <div><label class="fl">当前阶段</label><select id="ast">${STAGES.map(s=>`<option value="${s.key}">${s.label}</option>`).join('')}</select></div>
+  </div><div class="mfoot"><button onclick="closeModal()">取消</button><button class="mp" onclick="saveAdd()">添加</button></div>`);
+}
+function saveAdd(){
+  const name=document.getElementById('an').value.trim();if(!name)return;
+  products.push({id:Date.now(),name,spu:document.getElementById('as').value.trim(),stage:document.getElementById('ast').value,monthTarget:parseFloat(document.getElementById('at').value)||null,weeks:[]});
+  closeModal();renderAll();scheduleSave();
+}
+function clearWeekData(id,wk){
+  if(!confirm('确认清除该产品 '+wk+' 的数据？产品本身保留。'))return;
+  const p=products.find(function(x){return x.id===id;});if(!p)return;
+  p.weeks=p.weeks.filter(function(w){return w.week!==wk;});
+  closeModal();renderAll();scheduleSave();
+}
+function delP(id){products=products.filter(x=>x.id!==id);closeModal();renderAll()}
+function openManageProducts(){
+  // Group products by stage
+  const rows=products.map(p=>{
+    const checked=`<input type="checkbox" id="chk-${p.id}" style="margin-right:4px">`;
+    const stage=STAGES.find(s=>s.key===p.stage)?.label||p.stage;
+    return `<tr>
+      <td style="padding:4px 8px">${checked}</td>
+      <td style="padding:4px 8px;font-size:11px;font-weight:600">${p.name}</td>
+      <td style="padding:4px 8px;font-size:11px;color:var(--tx3)">${p.spu}</td>
+      <td style="padding:4px 8px;font-size:11px">${stage}</td>
+      <td style="padding:4px 8px;font-size:11px;color:var(--tx2)">${p.weeks.length}周数据</td>
+    </tr>`;
+  }).join('');
+  showModal(`<h2>管理产品</h2>
+    <p class="msub">勾选要删除的产品，删除后数据无法恢复。建议只保留你们实际跟踪的爆品。</p>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button onclick="selectAllProds(true)" style="font-size:11px;padding:3px 10px;border:0.5px solid var(--bd2);border-radius:6px;cursor:pointer;background:none;color:var(--tx)">全选</button>
+      <button onclick="selectAllProds(false)" style="font-size:11px;padding:3px 10px;border:0.5px solid var(--bd2);border-radius:6px;cursor:pointer;background:none;color:var(--tx)">取消全选</button>
+      <span style="font-size:11px;color:var(--tx2);margin-left:4px">共 ${products.length} 个产品</span>
+    </div>
+    <div style="overflow-y:auto;max-height:360px;border:0.5px solid var(--bd);border-radius:8px">
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:var(--surf2);font-size:11px;color:var(--tx2)">
+        <th style="padding:4px 8px;text-align:left;border-bottom:0.5px solid var(--bd)">选择</th>
+        <th style="padding:4px 8px;text-align:left;border-bottom:0.5px solid var(--bd)">产品名</th>
+        <th style="padding:4px 8px;text-align:left;border-bottom:0.5px solid var(--bd)">SPU</th>
+        <th style="padding:4px 8px;text-align:left;border-bottom:0.5px solid var(--bd)">阶段</th>
+        <th style="padding:4px 8px;text-align:left;border-bottom:0.5px solid var(--bd)">数据</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <div class="mfoot">
+      <button onclick="closeModal()">取消</button>
+      <button onclick="deleteSelected()" style="background:var(--r);color:#fff;border-color:var(--r);border-radius:6px;padding:5px 14px;font-size:12px;font-weight:500;cursor:pointer;border:none">删除选中产品</button>
+    </div>`);
+}
+function selectAllProds(v){products.forEach(p=>{const el=document.getElementById('chk-'+p.id);if(el)el.checked=v;});}
+function deleteSelected(){
+  const toDelete=products.filter(p=>{const el=document.getElementById('chk-'+p.id);return el&&el.checked;});
+  if(!toDelete.length){alert('请先勾选要删除的产品');return;}
+  if(!confirm('确认删除 '+toDelete.length+' 个产品及其所有数据？'))return;
+  const ids=new Set(toDelete.map(p=>p.id));
+  products=products.filter(p=>!ids.has(p.id));
+  closeModal();renderAll();scheduleSave();
+}
+function showModal(h){document.getElementById('modal').innerHTML=`<div class="mbg" onclick="closeModal()"><div class="mbox" onclick="event.stopPropagation()">${h}</div></div>`}
+function closeModal(){document.getElementById('modal').innerHTML=''}
+
+
+const CONFIG = {
+  JSONBIN_KEY: '$2a$10$BNwF7/kKTg0PAVsPT2ZogOaGfMam6AN0HnFYtBe3xoXpkwWdgtAv6',
+  JSONBIN_BIN: '69bb9976c3097a1dd53b64c8',
+  PASSWORD: '0303',
+};
+const JSONBIN_URL = 'https://api.jsonbin.io/v3/b';
+let binId = CONFIG.JSONBIN_BIN || localStorage.getItem('tk_bin_id') || '';
+
+// ── SPU-TK ID MAPPING (from SPU-SKU对应表.xlsx) ──
+// tkIdToSpuMap: TK商品ID → SPU编号
+// spuPrimaryId: SPU编号 → 主链接TK ID（用于CTR/CVR等不可累加的指标）
+const TK_ID_MAP = {"1730663129565005597": "1231", "1732181649793976093": "1231", "1731101216851658525": "1231", "1732214873002379037": "1231", "1732521689349195549": "1231", "1730664436672005917": "1224", "1732214938331416349": "1224", "1734506378268804893": "1224", "1729570356858619677": "1012", "1731395040201443101": "1012", "1732214846556899101": "1012", "1733701645965035293": "1384", "1734498630996559645": "1384", "1734498643028969245": "1384", "1734395866338723613": "1396+1389", "1734394792838399773": "1396+1389", "1734397384085178141": "1396+1389", "1734401034894673693": "1397+1231", "1734390659037693725": "1397+1231", "1731296268576392989": "1339", "1731462506026010397": "1339", "1732214972696790813": "1339", "1731452017449207581": "1339", "1731463697153951517": "1339", "1730664361062729501": "1248", "1729667318197683997": "1248", "1731511020309939997": "1248", "1732214851976333085": "1248", "1730466404338665245": "1234", "1730934040853120797": "1234", "1732214975458019101": "1234", "1732214977455818525": "1234", "1731372979734021917": "1234", "1734389770608609053": "1234", "1734340599971677761": "2116", "1734342419897681473": "2193", "1731473495957276225": "2175", "1732215049519793729": "2175", "1730842201862145601": "2138", "1731902184251819585": "2182", "1732301286624757313": "2182", "1730849685324400193": "2141", "1730592170803234369": "2080", "1732215088699901505": "2080", "1732519458681620033": "2253", "1733713630871651905": "2253", "1733270260813039169": "2253", "1730842097266427457": "2132", "1732214774882338369": "2132", "1731760752836642369": "2132", "1730725192861713985": "2104", "1732214786826667585": "2104", "1731246601208628801": "2174", "1732700501366834753": "2174", "1732214680172856897": "2174", "1729747804227405377": "2005", "1732207023262631489": "2005", "1732214871331145281": "2005", "1731513758147774017": "2005", "1730919844748494401": "2031", "1729747806058022465": "2031", "1732214904324589121": "2031", "1729747799799203393": "2011", "1730678664945043009": "2011", "1732214975384094273": "2011", "1733927755719738528": "4005", "1731596302246249632": "4005", "1731883740803335328": "4005", "1734386997994423456": "4005", "1734496105809937568": "4005", "1731688259295937696": "4005", "1731595952808821920": "4006", "1732679963724383392": "4006", "1731883709560489120": "4006", "1732679960936547488": "4006", "1732274981238441120": "4006", "1731963665158735008": "4007", "1732160063697028256": "4007", "1734496290265990304": "4007", "1731376922555483296": "4002", "1730837498019218592": "4002", "1730874954246489248": "4002", "1730948376113218720": "4002", "1732679705149473952": "4002", "1733632825701467296": "4018", "1734390700681299104": "4018"};
+const SPU_PRIMARY = {"1231": "1730663129565005597", "1224": "1730664436672005917", "1012": "1729570356858619677", "1384": "1733701645965035293", "1396+1389": "1734395866338723613", "1397+1231": "1734401034894673693", "1339": "1731296268576392989", "1248": "1730664361062729501", "1234": "1730466404338665245", "2116": "1734340599971677761", "2193": "1734342419897681473", "2175": "1731473495957276225", "2138": "1730842201862145601", "2182": "1731902184251819585", "2141": "1730849685324400193", "2080": "1730592170803234369", "2253": "1732519458681620033", "2132": "1730842097266427457", "2104": "1730725192861713985", "2174": "1731246601208628801", "2005": "1729747804227405377", "2031": "1730919844748494401", "2011": "1729747799799203393", "4005": "1733927755719738528", "4006": "1731595952808821920", "4007": "1731963665158735008", "4002": "1731376922555483296", "4018": "1733632825701467296"};
+
+
+function doLogin(){
+  const pw = document.getElementById('pw-input').value;
+  if(pw === CONFIG.PASSWORD){
+    document.getElementById('login-screen').style.display='none';
+    document.getElementById('main-app').style.display='block';
+    sessionStorage.setItem('tk_auth','1');
+    loadCloud();
+  } else {
+    document.getElementById('login-err').textContent='密码错误';
+    document.getElementById('pw-input').value='';
+  }
+}
+if(sessionStorage.getItem('tk_auth')==='1'){
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('main-app').style.display='block';
+}
+
+function setSyncStatus(state,msg){
+  const dot=document.getElementById('sync-dot');
+  const lbl=document.getElementById('sync-label');
+  dot.className='sync-dot '+(state==='ok'?'ok':state==='saving'?'saving':'err');
+  lbl.textContent=msg;
+}
+function setSyncTime(){const n=new Date();document.getElementById('sync-time').textContent=`上次同步 ${n.getHours().toString().padStart(2,'0')}:${n.getMinutes().toString().padStart(2,'0')}`;}
+
+async function loadCloud(){
+  if(!CONFIG.JSONBIN_KEY||CONFIG.JSONBIN_KEY.startsWith('在这里')){setSyncStatus('err','⚠ 请填写 JSONBin Key');return;}
+  setSyncStatus('saving','加载中…');
+  try{
+    if(!binId){await createBin();return;}
+    const res=await fetch(`${JSONBIN_URL}/${binId}/latest`,{headers:{'X-Master-Key':CONFIG.JSONBIN_KEY,'X-Bin-Meta':'false'}});
+    if(!res.ok)throw new Error(`HTTP ${res.status}`);
+    const data=await res.json();
+    if(data.products)products=data.products.map(p=>({...p,weeks:(p.weeks||[]).map(w=>applyAuto({...w}))}));
+    setSyncStatus('ok','已同步');setSyncTime();renderAll();
+  }catch(e){setSyncStatus('err','加载失败: '+e.message);}
+}
+async function createBin(){
+  setSyncStatus('saving','初始化云端…');
+  try{
+    const res=await fetch(JSONBIN_URL,{method:'POST',headers:{'Content-Type':'application/json','X-Master-Key':CONFIG.JSONBIN_KEY,'X-Bin-Name':'TK-Dashboard'},body:JSON.stringify({products})});
+    if(!res.ok)throw new Error(`HTTP ${res.status}`);
+    const data=await res.json();
+    binId=data.metadata.id;localStorage.setItem('tk_bin_id',binId);
+    setSyncStatus('ok','初始化完成');setSyncTime();renderAll();
+  }catch(e){setSyncStatus('err','初始化失败: '+e.message);}
+}
+let saveTimer=null;
+function scheduleSave(){
+  clearTimeout(saveTimer);setSyncStatus('saving','保存中…');
+  saveTimer=setTimeout(saveCloud,1500);
+}
+async function saveCloud(){
+  if(!binId){await createBin();return;}
+  try{
+    const res=await fetch(`${JSONBIN_URL}/${binId}`,{method:'PUT',headers:{'Content-Type':'application/json','X-Master-Key':CONFIG.JSONBIN_KEY},body:JSON.stringify({products})});
+    if(!res.ok)throw new Error(`HTTP ${res.status}`);
+    setSyncStatus('ok','已保存');setSyncTime();
+  }catch(e){setSyncStatus('err','保存失败: '+e.message);}
+}
+setInterval(()=>{if(sessionStorage.getItem('tk_auth')==='1'&&!saveTimer)loadCloud();},30000);
+
+initM();
+if(sessionStorage.getItem('tk_auth')==='1') loadCloud(); else renderAll();
+</script>
+</div>
+
+</body>
+</html>
